@@ -1,0 +1,22 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# build output
+/dist
+/build
+
+# misc
+.DS_Store
+Thumbs.db
+
+# local env files
+.env
+.env.local
+.env.*.local
+
+# IDE/editor config
+.vscode/
+.idea/
+*.sw?
