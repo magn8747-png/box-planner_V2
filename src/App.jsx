@@ -31,12 +31,23 @@ function generateAllCombos(pure750) {
     for (let a250 = 0; a250 <= 2 - a60; a250++) {
       const a340 = 2 - a60 - a250;
       if (a60 === 0 && a250 === 0 && a340 === 0) continue;
-      combos.push(combo(`2×750 + (${a60}×60,${a250}×250,${a340}×340)`, a60, a250, a340, 2, 0));
+      combos.push(
+        combo(
+          `2×750 + (${a60}×60,${a250}×250,${a340}×340)`,
+          a60,
+          a250,
+          a340,
+          2,
+          0
+        )
+      );
     }
   }
   for (let a250 = 0; a250 <= 5; a250++) {
     const a340 = 5 - a250;
-    combos.push(combo(`1×750 + (${a250}×250,${a340}×340)`, 0, a250, a340, 1, 0));
+    combos.push(
+      combo(`1×750 + (${a250}×250,${a340}×340)`, 0, a250, a340, 1, 0)
+    );
   }
   combos.push(combo("1×750 + 8×60", 8, 0, 0, 1, 0));
   combos.push(combo("1×250 + 8×60", 8, 1, 0, 0, 0));
@@ -45,7 +56,8 @@ function generateAllCombos(pure750) {
   const map = new Map();
   for (const cb of combos) {
     const key = `${cb.c60},${cb.c250},${cb.c340},${cb.c750},${cb.c5000},${cb.onlyIfPure750}`;
-    if (!map.has(key) || cb.name.length < map.get(key).name.length) map.set(key, cb);
+    if (!map.has(key) || cb.name.length < map.get(key).name.length)
+      map.set(key, cb);
   }
   return Array.from(map.values());
 }
@@ -57,13 +69,18 @@ function solveOptimal(counts) {
   const dInit = counts["750"] || 0;
   const eInit = counts["5000"] || 0;
 
-  const pure750 = aInit === 0 && bInit === 0 && cInit === 0 && dInit > 0 && eInit === 0;
+  const pure750 =
+    aInit === 0 && bInit === 0 && cInit === 0 && dInit > 0 && eInit === 0;
   const combos = generateAllCombos(pure750);
 
   const CAP = { 60: 10, 250: 8, 340: 8, 750: 2, 5000: 3 };
   const ceilDiv = (x, m) => (x <= 0 ? 0 : Math.floor((x + m - 1) / m));
   const partialCost = (a, b, c, d, e) =>
-    ceilDiv(a, CAP[60]) + ceilDiv(b, CAP[250]) + ceilDiv(c, CAP[340]) + ceilDiv(d, CAP[750]) + ceilDiv(e, CAP[5000]);
+    ceilDiv(a, CAP[60]) +
+    ceilDiv(b, CAP[250]) +
+    ceilDiv(c, CAP[340]) +
+    ceilDiv(d, CAP[750]) +
+    ceilDiv(e, CAP[5000]);
 
   const memo = new Map();
   const key = (a, b, c, d, e) => `${a}|${b}|${c}|${d}|${e}`;
@@ -85,10 +102,20 @@ function solveOptimal(counts) {
     for (let i = 0; i < combos.length; i++) {
       const cb = combos[i];
       if (
-        cb.c60 <= a && cb.c250 <= b && cb.c340 <= c && cb.c750 <= d && cb.c5000 <= e &&
+        cb.c60 <= a &&
+        cb.c250 <= b &&
+        cb.c340 <= c &&
+        cb.c750 <= d &&
+        cb.c5000 <= e &&
         (!cb.onlyIfPure750 || pure750)
       ) {
-        const child = dp(a - cb.c60, b - cb.c250, c - cb.c340, d - cb.c750, e - cb.c5000);
+        const child = dp(
+          a - cb.c60,
+          b - cb.c250,
+          c - cb.c340,
+          d - cb.c750,
+          e - cb.c5000
+        );
         const cand = {
           cost: child.cost + 1,
           fullCount: child.fullCount + 1,
@@ -108,22 +135,34 @@ function solveOptimal(counts) {
   const pushBox = (name, c60, c250, c340, c750, c5000) =>
     boxes.push({ name, c60, c250, c340, c750, c5000, onlyIfPure750: false });
 
-  let a = aInit, b = bInit, c = cInit, d = dInit, e = eInit;
+  let a = aInit,
+    b = bInit,
+    c = cInit,
+    d = dInit,
+    e = eInit;
   for (const idx of [...res.picks].reverse()) {
     const cb = combos[idx];
     pushBox(cb.name, cb.c60, cb.c250, cb.c340, cb.c750, cb.c5000);
-    a -= cb.c60; b -= cb.c250; c -= cb.c340; d -= cb.c750; e -= cb.c5000;
+    a -= cb.c60;
+    b -= cb.c250;
+    c -= cb.c340;
+    d -= cb.c750;
+    e -= cb.c5000;
   }
 
   const drain = (label, amount, cap) => {
     let x = amount;
     while (x > 0) {
       const take = Math.min(cap, x);
-      if (label === "60")   pushBox(`Partial box: ${take}×60`,   take, 0, 0, 0, 0);
-      if (label === "250")  pushBox(`Partial box: ${take}×250`,  0, take, 0, 0, 0);
-      if (label === "340")  pushBox(`Partial box: ${take}×340`,  0, 0, take, 0, 0);
-      if (label === "750")  pushBox(`Partial box: ${take}×750`,  0, 0, 0, take, 0);
-      if (label === "5000") pushBox(`Partial box: ${take}×5000`, 0, 0, 0, 0, take);
+      if (label === "60") pushBox(`Partial box: ${take}×60`, take, 0, 0, 0, 0);
+      if (label === "250")
+        pushBox(`Partial box: ${take}×250`, 0, take, 0, 0, 0);
+      if (label === "340")
+        pushBox(`Partial box: ${take}×340`, 0, 0, take, 0, 0);
+      if (label === "750")
+        pushBox(`Partial box: ${take}×750`, 0, 0, 0, take, 0);
+      if (label === "5000")
+        pushBox(`Partial box: ${take}×5000`, 0, 0, 0, 0, take);
       x -= take;
     }
   };
@@ -150,10 +189,12 @@ function solveOptimal(counts) {
 // Parsers
 // =============================================
 
-// Gammel parser – bruges som fallback, hvis ikke der er kundenavne mv.
+// Gammel parser – fallback hvis der ikke er Kundenavn/Ordrelinje-kolonner
 function parseCountsFromSheet(sheet) {
   const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-  const wanted = rows.filter((r) => String(r.Enhed || "").toLowerCase().trim() === "kolli");
+  const wanted = rows.filter(
+    (r) => String(r.Enhed || "").toLowerCase().trim() === "kolli"
+  );
   const sizeFromName = (name) => {
     const m = String(name || "").match(/(60|250|340|750|5000)\s*ml/i);
     return m ? m[1] : null;
@@ -163,7 +204,8 @@ function parseCountsFromSheet(sheet) {
     const ml = sizeFromName(r.Navn);
     if (!ml) continue;
     const antal = Number(r.Antal || 0);
-    counts[ml] = (counts[ml] || 0) + (isFinite(antal) ? antal : 0);
+    counts[ml] =
+      (counts[ml] || 0) + (isFinite(antal) ? antal : 0);
   }
   return counts;
 }
@@ -195,7 +237,7 @@ function parseCustomersFromSheet(sheet) {
 
     if (!byCustomer.has(customerName)) {
       byCustomer.set(customerName, {
-        customerId: customerName,   // kan udvides til rigtig ID senere
+        customerId: customerName, // kan ændres til rigtig ID senere
         customerName,
         counts: { "60": 0, "250": 0, "340": 0, "750": 0, "5000": 0 },
       });
@@ -211,31 +253,78 @@ function parseCustomersFromSheet(sheet) {
 // =============================================
 
 function prettyCounts(counts) {
-  return `60ml ${counts["60"] || 0}, 250ml ${counts["250"] || 0}, 340ml ${counts["340"] || 0}, 750ml ${
-    counts["750"] || 0
-  }, 5000ml ${counts["5000"] || 0}`;
+  return `60ml ${counts["60"] || 0}, 250ml ${counts["250"] || 0}, 340ml ${
+    counts["340"] || 0
+  }, 750ml ${counts["750"] || 0}, 5000ml ${counts["5000"] || 0}`;
 }
 
 function runSelfTests() {
   const tests = [
-    { name: "pure 3×5000", counts: { 5000: 3 }, expectBoxes: 1, contains: ["3×5000"] },
-    { name: "4×5000 → 1 full + 1 partial", counts: { 5000: 4 }, expectBoxes: 2, contains: ["3×5000", "Partial box: 1×5000"] },
-    { name: "2×5000 + 2×250 + 1×60", counts: { 5000: 2, 250: 2, 60: 1 }, expectBoxes: 1, contains: ["2×5000 + 2×250 + 1×60"] },
-    { name: "2×5000 + 2×340", counts: { 5000: 2, 340: 2 }, expectBoxes: 1, contains: ["2×5000 + 2×340"] },
-    { name: "1×5000 + 1×750 + 1×250", counts: { 5000: 1, 750: 1, 250: 1 }, expectBoxes: 1, contains: ["1×5000 + 1×750 + 1×250"] },
-    { name: "1×5000 + 1×750 + 2×60", counts: { 5000: 1, 750: 1, 60: 2 }, expectBoxes: 1, contains: ["1×5000 + 1×750 + 2×60"] },
-    { name: "1×5000 + 4×250 + 1×60", counts: { 5000: 1, 250: 4, 60: 1 }, expectBoxes: 1, contains: ["1×5000 + 4×250 + 1×60"] },
-    { name: "1×5000 + 4×340 + 1×60", counts: { 5000: 1, 340: 4, 60: 1 }, expectBoxes: 1, contains: ["1×5000 + 4×340 + 1×60"] },
+    {
+      name: "pure 3×5000",
+      counts: { 5000: 3 },
+      expectBoxes: 1,
+      contains: ["3×5000"],
+    },
+    {
+      name: "4×5000 → 1 full + 1 partial",
+      counts: { 5000: 4 },
+      expectBoxes: 2,
+      contains: ["3×5000", "Partial box: 1×5000"],
+    },
+    {
+      name: "2×5000 + 2×250 + 1×60",
+      counts: { 5000: 2, 250: 2, 60: 1 },
+      expectBoxes: 1,
+      contains: ["2×5000 + 2×250 + 1×60"],
+    },
+    {
+      name: "2×5000 + 2×340",
+      counts: { 5000: 2, 340: 2 },
+      expectBoxes: 1,
+      contains: ["2×5000 + 2×340"],
+    },
+    {
+      name: "1×5000 + 1×750 + 1×250",
+      counts: { 5000: 1, 750: 1, 250: 1 },
+      expectBoxes: 1,
+      contains: ["1×5000 + 1×750 + 1×250"],
+    },
+    {
+      name: "1×5000 + 1×750 + 2×60",
+      counts: { 5000: 1, 750: 1, 60: 2 },
+      expectBoxes: 1,
+      contains: ["1×5000 + 1×750 + 2×60"],
+    },
+    {
+      name: "1×5000 + 4×250 + 1×60",
+      counts: { 5000: 1, 250: 4, 60: 1 },
+      expectBoxes: 1,
+      contains: ["1×5000 + 4×250 + 1×60"],
+    },
+    {
+      name: "1×5000 + 4×340 + 1×60",
+      counts: { 5000: 1, 340: 4, 60: 1 },
+      expectBoxes: 1,
+      contains: ["1×5000 + 4×340 + 1×60"],
+    },
   ];
   let passed = 0;
   for (const t of tests) {
     const out = solveOptimal(t.counts);
     const names = out.boxes.map((b) => b.name).join(" | ");
-    const okBoxes = typeof t.expectBoxes === "number" ? out.summary.boxes === t.expectBoxes : true;
+    const okBoxes =
+      typeof t.expectBoxes === "number"
+        ? out.summary.boxes === t.expectBoxes
+        : true;
     const okContains = (t.contains || []).every((s) => names.includes(s));
     const ok = okBoxes && okContains;
     if (ok) passed++;
-    console.log(`${ok ? "✔" : "✘"} ${t.name} → boxes=${out.summary.boxes}; combos=[${names}]`);
+    console.log(
+      `${ok ? "✔" : "✘"} ${t.name} → boxes=${
+        out.summary.boxes
+      }; combos=[${names}]`
+    );
   }
   console.log(`Self-tests: ${passed}/${tests.length} passed`);
 }
@@ -250,8 +339,8 @@ export default function App() {
   const [error, setError] = useState("");
   const [customer, setCustomer] = useState("");
 
-  // NEW: flere kunder i én fil
-  const [customersData, setCustomersData] = useState([]);       // [{ customerId, customerName, counts, result }]
+  // Flere kunder i én fil
+  const [customersData, setCustomersData] = useState([]); // [{ customerId, customerName, counts, result }]
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
 
   useEffect(() => {
@@ -284,7 +373,11 @@ export default function App() {
 
     try {
       const data = await f.arrayBuffer();
-      const wb = XLSX.read(data, { cellStyles: false, cellHTML: false, WTF: false });
+      const wb = XLSX.read(data, {
+        cellStyles: false,
+        cellHTML: false,
+        WTF: false,
+      });
 
       const preferredSheetName = wb.SheetNames.includes("Ordreliste")
         ? "Ordreliste"
@@ -311,15 +404,14 @@ export default function App() {
 
       setCustomersData(withResults);
 
-      if (withResults.length === 1) {
-        // Kun én kunde i filen → opfør dig som før
-        const only = withResults[0];
-        setSelectedCustomerId(only.customerId);
-        setCounts(only.counts);
-        setResult(only.result);
-        setCustomer(only.customerName);
+      // Vælg automatisk første kunde
+      const first = withResults[0];
+      if (first) {
+        setSelectedCustomerId(first.customerId);
+        setCounts(first.counts);
+        setResult(first.result);
+        setCustomer(first.customerName);
       }
-      // Hvis der er flere kunder, skal brugeren vælge i dropdown
     } catch (err) {
       console.error(err);
       setError(
@@ -340,7 +432,11 @@ export default function App() {
 
   function onDownloadCSV() {
     if (!result) return;
-    const rows = [["Customer", customer || ""], [], ["Box", "Combination", "60", "250", "340", "750", "5000"]];
+    const rows = [
+      ["Customer", customer || ""],
+      [],
+      ["Box", "Combination", "60", "250", "340", "750", "5000"],
+    ];
     result.boxes.forEach((b, i) =>
       rows.push([
         String(i + 1),
@@ -352,10 +448,21 @@ export default function App() {
         String(b.c5000 ?? 0),
       ])
     );
-    const csv = rows.map((r) => r.map((cell) => String(cell).replace(/;/g, ",")).join(";")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const csv = rows
+      .map((r) =>
+        r
+          .map((cell) => String(cell).replace(/;/g, ","))
+          .join(";")
+      )
+      .join("\n");
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8;",
+    });
     const url = URL.createObjectURL(blob);
-    const safeName = (customer || "packing-plan").replace(/[^a-z0-9_-]/gi, "-");
+    const safeName = (customer || "packing-plan").replace(
+      /[^a-z0-9_-]/gi,
+      "-"
+    );
     const a = document.createElement("a");
     a.href = url;
     a.download = `${safeName}.csv`;
@@ -388,7 +495,12 @@ export default function App() {
           <div className="flex flex-col md:flex-row md:items-center gap-4 print:hidden">
             <label className="inline-flex items-center gap-2">
               <Upload className="w-5 h-5" />
-              <input type="file" accept=".xlsx" onChange={handleFile} className="block" />
+              <input
+                type="file"
+                accept=".xlsx"
+                onChange={handleFile}
+                className="block"
+              />
             </label>
             {file && (
               <button
@@ -400,21 +512,28 @@ export default function App() {
             )}
 
             {/* Customer selection / input */}
-            {counts && (
+            {(customersData.length > 0 || counts) && (
               <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-700">Customer</label>
+                <label className="text-sm text-gray-700">
+                  Customer
+                </label>
 
                 {customersData.length > 1 ? (
                   <select
                     value={selectedCustomerId || ""}
-                    onChange={(e) => handleSelectCustomer(e.target.value)}
+                    onChange={(e) =>
+                      handleSelectCustomer(e.target.value)
+                    }
                     className="px-3 py-2 rounded-xl border focus:outline-none focus:ring w-72"
                   >
                     <option value="" disabled>
                       Vælg kunde…
                     </option>
                     {customersData.map((c) => (
-                      <option key={c.customerId} value={c.customerId}>
+                      <option
+                        key={c.customerId}
+                        value={c.customerId}
+                      >
                         {c.customerName}
                       </option>
                     ))}
@@ -422,7 +541,9 @@ export default function App() {
                 ) : (
                   <input
                     value={customer}
-                    onChange={(e) => setCustomer(e.target.value)}
+                    onChange={(e) =>
+                      setCustomer(e.target.value)
+                    }
                     placeholder="Type customer name"
                     className="px-3 py-2 rounded-xl border focus:outline-none focus:ring w-56"
                   />
@@ -450,7 +571,11 @@ export default function App() {
             )}
           </div>
 
-          {error && <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-xl">{error}</div>}
+          {error && (
+            <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-xl">
+              {error}
+            </div>
+          )}
 
           {counts && (
             <div className="mt-6">
@@ -458,7 +583,9 @@ export default function App() {
                 <FileSpreadsheet className="w-5 h-5" /> Detected units
               </h2>
               <div className="flex items-center justify-between">
-                <div className="rounded-xl border p-3 bg-gray-50">{prettyCounts(counts)}</div>
+                <div className="rounded-xl border p-3 bg-gray-50">
+                  {prettyCounts(counts)}
+                </div>
                 {customer && (
                   <div className="text-sm text-gray-600">
                     Customer: <b>{customer}</b>
@@ -470,20 +597,32 @@ export default function App() {
 
           {result && (
             <div className="mt-8">
-              <h3 className="text-lg font-semibold mb-2">Result</h3>
+              <h3 className="text-lg font-semibold mb-2">
+                Result
+              </h3>
               <div className="grid sm:grid-cols-3 gap-4">
                 <div className="rounded-2xl border p-4 bg-gradient-to-b from-white to-gray-50">
-                  <div className="text-sm text-gray-500">Total boxes</div>
-                  <div className="text-3xl font-bold">{result.summary.boxes}</div>
-                </div>
-                <div className="rounded-2xl border p-4 bg-gradient-to-b from-white to-gray-50">
-                  <div className="text-sm text-gray-500">Customer</div>
-                  <div className="mt-1 text-base">
-                    {customer || <span className="text-gray-400">—</span>}
+                  <div className="text-sm text-gray-500">
+                    Total boxes
+                  </div>
+                  <div className="text-3xl font-bold">
+                    {result.summary.boxes}
                   </div>
                 </div>
                 <div className="rounded-2xl border p-4 bg-gradient-to-b from-white to-gray-50">
-                  <div className="text-sm text-gray-500">Date</div>
+                  <div className="text-sm text-gray-500">
+                    Customer
+                  </div>
+                  <div className="mt-1 text-base">
+                    {customer || (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </div>
+                </div>
+                <div className="rounded-2xl border p-4 bg-gradient-to-b from-white to-gray-50">
+                  <div className="text-sm text-gray-500">
+                    Date
+                  </div>
                   <div className="mt-1 text-base">{today}</div>
                 </div>
               </div>
@@ -503,19 +642,37 @@ export default function App() {
                   </thead>
                   <tbody>
                     {result.boxes.map((b, i) => (
-                      <tr key={i} className="odd:bg-white even:bg-gray-50">
-                        <td className="border p-2 text-center">{i + 1}</td>
+                      <tr
+                        key={i}
+                        className="odd:bg-white even:bg-gray-50"
+                      >
+                        <td className="border p-2 text-center">
+                          {i + 1}
+                        </td>
                         <td className="border p-2">{b.name}</td>
-                        <td className="border p-2 text-center">{b.c60 ?? 0}</td>
-                        <td className="border p-2 text-center">{b.c250 ?? 0}</td>
-                        <td className="border p-2 text-center">{b.c340 ?? 0}</td>
-                        <td className="border p-2 text-center">{b.c750 ?? 0}</td>
-                        <td className="border p-2 text-center">{b.c5000 ?? 0}</td>
+                        <td className="border p-2 text-center">
+                          {b.c60 ?? 0}
+                        </td>
+                        <td className="border p-2 text-center">
+                          {b.c250 ?? 0}
+                        </td>
+                        <td className="border p-2 text-center">
+                          {b.c340 ?? 0}
+                        </td>
+                        <td className="border p-2 text-center">
+                          {b.c750 ?? 0}
+                        </td>
+                        <td className="border p-2 text-center">
+                          {b.c5000 ?? 0}
+                        </td>
                       </tr>
                     ))}
                     {result.boxes.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="p-4 text-center text-gray-500">
+                        <td
+                          colSpan={7}
+                          className="p-4 text-center text-gray-500"
+                        >
                           No boxes – nothing to pack
                         </td>
                       </tr>
