@@ -211,9 +211,13 @@ function parseCountsFromSheet(sheet) {
 }
 
 // NY: Parser til ordreliste med flere kunder
-// Forventer kolonner: "Kundenavn", "Ordrelinje produktnavn", "Ordrelinje antal"
+// Vi læser direkte pr. kolonne-position:
+//  - A (index 0): Leveringsdato
+//  - B (index 1): Kundenavn
+//  - C (index 2): Ordrelinje produktnavn
+//  - E (index 4): Ordrelinje antal
 function parseCustomersFromSheet(sheet) {
-  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
 
   const sizeFromName = (name) => {
     const m = String(name || "").match(/(60|250|340|750|5000)\s*ml/i);
@@ -222,10 +226,31 @@ function parseCustomersFromSheet(sheet) {
 
   const byCustomer = new Map();
 
-  for (const r of rows) {
-    const customerName = String(r["Kundenavn"] || "").trim();
-    const productName = String(r["Ordrelinje produktnavn"] || "");
-    const qtyRaw = r["Ordrelinje antal"];
+  for (let i = 2; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length === 0) continue;
+
+    const rawDate = row[0]; // kolonne A
+    let dateStr = "";
+    if (rawDate instanceof Date) {
+      dateStr = rawDate.toLocaleDateString("da-DK");
+    } else if (typeof rawDate === "number" && XLSX.SSF && XLSX.SSF.parse_date_code) {
+      try {
+        const dc = XLSX.SSF.parse_date_code(rawDate);
+        if (dc) {
+          const jsDate = new Date(dc.y, dc.m - 1, dc.d);
+          dateStr = jsDate.toLocaleDateString("da-DK");
+        }
+      } catch {
+        dateStr = String(rawDate || "").trim();
+      }
+    } else {
+      dateStr = String(rawDate || "").trim();
+    }
+
+    const customerName = String(row[1] || "").trim(); // kolonne B
+    const productName = String(row[2] || "");          // kolonne C
+    const qtyRaw = row[4];                             // kolonne E
 
     if (!customerName) continue;
 
@@ -237,14 +262,18 @@ function parseCustomersFromSheet(sheet) {
 
     if (!byCustomer.has(customerName)) {
       byCustomer.set(customerName, {
-        customerId: customerName, // kan ændres til rigtig ID senere
+        customerId: customerName,
         customerName,
         counts: { "60": 0, "250": 0, "340": 0, "750": 0, "5000": 0 },
+        deliveryDate: dateStr || "",
       });
     }
 
     const entry = byCustomer.get(customerName);
     entry.counts[ml] = (entry.counts[ml] || 0) + qty;
+    if (!entry.deliveryDate && dateStr) {
+      entry.deliveryDate = dateStr;
+    }
   }
 
   return Array.from(byCustomer.values());
@@ -330,6 +359,91 @@ function runSelfTests() {
 }
 
 // =============================================
+// Print-komponent (kun til print)
+// =============================================
+function CustomerPrintSection({ customerName, date, counts, result, isLast }) {
+  if (!result || !counts) return null;
+  return (
+    <div style={{ pageBreakAfter: isLast ? "auto" : "always" }}>
+      <h2 style={{ fontSize: "18px", fontWeight: "bold", marginBottom: "4px" }}>
+        Box Planner – {customerName || "Ukendt kunde"}
+      </h2>
+      <div style={{ marginBottom: "8px", fontSize: "12px", color: "#555" }}>
+        Date: {date || "-"}
+      </div>
+      <div
+        style={{
+          border: "1px solid #ddd",
+          padding: "6px",
+          marginBottom: "8px",
+          fontSize: "12px",
+        }}
+      >
+        {prettyCounts(counts)}
+      </div>
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          fontSize: "12px",
+        }}
+      >
+        <thead>
+          <tr>
+            <th style={{ border: "1px solid #ddd", padding: "4px" }}>#</th>
+            <th style={{ border: "1px solid #ddd", padding: "4px" }}>
+              Combination
+            </th>
+            <th style={{ border: "1px solid #ddd", padding: "4px" }}>60</th>
+            <th style={{ border: "1px solid #ddd", padding: "4px" }}>250</th>
+            <th style={{ border: "1px solid #ddd", padding: "4px" }}>340</th>
+            <th style={{ border: "1px solid #ddd", padding: "4px" }}>750</th>
+            <th style={{ border: "1px solid #ddd", padding: "4px" }}>5000</th>
+          </tr>
+        </thead>
+        <tbody>
+          {result.boxes.map((b, i) => (
+            <tr key={i}>
+              <td style={{ border: "1px solid #ddd", padding: "4px", textAlign: "center" }}>
+                {i + 1}
+              </td>
+              <td style={{ border: "1px solid #ddd", padding: "4px" }}>
+                {b.name}
+              </td>
+              <td style={{ border: "1px solid #ddd", padding: "4px", textAlign: "center" }}>
+                {b.c60 ?? 0}
+              </td>
+              <td style={{ border: "1px solid #ddd", padding: "4px", textAlign: "center" }}>
+                {b.c250 ?? 0}
+              </td>
+              <td style={{ border: "1px solid #ddd", padding: "4px", textAlign: "center" }}>
+                {b.c340 ?? 0}
+              </td>
+              <td style={{ border: "1px solid #ddd", padding: "4px", textAlign: "center" }}>
+                {b.c750 ?? 0}
+              </td>
+              <td style={{ border: "1px solid #ddd", padding: "4px", textAlign: "center" }}>
+                {b.c5000 ?? 0}
+              </td>
+            </tr>
+          ))}
+          {result.boxes.length === 0 && (
+            <tr>
+              <td
+                colSpan={7}
+                style={{ border: "1px solid #ddd", padding: "4px", textAlign: "center", color: "#777" }}
+              >
+                No boxes – nothing to pack
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// =============================================
 // React component with multi-customer support
 // =============================================
 export default function App() {
@@ -339,9 +453,13 @@ export default function App() {
   const [error, setError] = useState("");
   const [customer, setCustomer] = useState("");
 
-  // Flere kunder i én fil
-  const [customersData, setCustomersData] = useState([]); // [{ customerId, customerName, counts, result }]
+  const [customersData, setCustomersData] = useState([]); // [{ customerId, customerName, counts, result, deliveryDate }]
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [printAll, setPrintAll] = useState(false);
+  const [displayDate, setDisplayDate] = useState("");
+
+  const today = new Date().toLocaleDateString("da-DK");
+  const effectiveDate = displayDate || today;
 
   useEffect(() => {
     try {
@@ -349,7 +467,6 @@ export default function App() {
     } catch {}
   }, []);
 
-  // Når der vælges kunde i dropdown
   function handleSelectCustomer(id) {
     setSelectedCustomerId(id);
     const entry = customersData.find((c) => c.customerId === id);
@@ -357,6 +474,7 @@ export default function App() {
     setCounts(entry.counts);
     setResult(entry.result);
     setCustomer(entry.customerName || entry.customerId);
+    setDisplayDate(entry.deliveryDate || "");
   }
 
   async function handleFile(e) {
@@ -368,6 +486,8 @@ export default function App() {
     setCustomer("");
     setCustomersData([]);
     setSelectedCustomerId("");
+    setDisplayDate("");
+    setPrintAll(false);
 
     if (!f) return;
 
@@ -384,19 +504,17 @@ export default function App() {
         : wb.SheetNames[0];
       const sheet = wb.Sheets[preferredSheetName];
 
-      // Prøv først at parse som dags-ordreliste med flere kunder
       const customers = parseCustomersFromSheet(sheet);
 
       if (customers.length === 0) {
-        // Fallback: gammel logik (enkelt ordre-ark med Enhed/Navn/Antal)
         const c = parseCountsFromSheet(sheet);
         setCounts(c);
         const res = solveOptimal(c);
         setResult(res);
+        setDisplayDate("");
         return;
       }
 
-      // Beregn for hver kunde
       const withResults = customers.map((c) => ({
         ...c,
         result: solveOptimal(c.counts),
@@ -404,18 +522,18 @@ export default function App() {
 
       setCustomersData(withResults);
 
-      // Vælg automatisk første kunde
       const first = withResults[0];
       if (first) {
         setSelectedCustomerId(first.customerId);
         setCounts(first.counts);
         setResult(first.result);
         setCustomer(first.customerName);
+        setDisplayDate(first.deliveryDate || "");
       }
     } catch (err) {
       console.error(err);
       setError(
-        "Kunne ikke læse regnearket. Tjek at fanen 'Ordreliste' og kolonnerne 'Kundenavn', 'Ordrelinje produktnavn' og 'Ordrelinje antal' findes, eller brug det gamle format med 'Enhed', 'Navn' og 'Antal'."
+        "Kunne ikke læse regnearket. Tjek at fanen 'Ordreliste' og kolonnerne A (Leveringsdato), B (kundenavn), C (produktnavn) og E (antal) er udfyldt, eller brug det gamle format med 'Enhed', 'Navn' og 'Antal'."
       );
     }
   }
@@ -428,12 +546,15 @@ export default function App() {
     setCustomer("");
     setCustomersData([]);
     setSelectedCustomerId("");
+    setPrintAll(false);
+    setDisplayDate("");
   }
 
   function onDownloadCSV() {
     if (!result) return;
     const rows = [
       ["Customer", customer || ""],
+      ["Date", effectiveDate || ""],
       [],
       ["Box", "Combination", "60", "250", "340", "750", "5000"],
     ];
@@ -470,29 +591,19 @@ export default function App() {
     URL.revokeObjectURL(url);
   }
 
-  const today = new Date().toLocaleDateString();
-
   return (
     <div className="min-h-screen bg-gray-50 p-6 print:bg-white">
       <div className="max-w-5xl mx-auto">
-        <header className="flex items-center gap-3 mb-6 print:mb-2">
-          <Package className="w-8 h-8 print:hidden" />
+        <header className="flex items-center gap-3 mb-6 print:mb-2 print:hidden">
+          <Package className="w-8 h-8" />
           <div className="flex flex-col">
             <h1 className="text-2xl font-bold">Box Planner</h1>
-            {/* Print header line with customer + date */}
-            <div className="text-sm text-gray-600 hidden print:block">
-              {customer ? (
-                <>
-                  Customer: <b>{customer}</b> ·{" "}
-                </>
-              ) : null}
-              Date: {today}
-            </div>
           </div>
         </header>
 
-        <div className="bg-white rounded-2xl shadow p-6 print:shadow-none print:p-0">
-          <div className="flex flex-col md:flex-row md:items-center gap-4 print:hidden">
+        {/* Skærmvisning */}
+        <div className="bg-white rounded-2xl shadow p-6 print:shadow-none print:p-0 print:hidden">
+          <div className="flex flex-col md:flex-row md:items-center gap-4">
             <label className="inline-flex items-center gap-2">
               <Upload className="w-5 h-5" />
               <input
@@ -511,7 +622,6 @@ export default function App() {
               </button>
             )}
 
-            {/* Customer selection / input */}
             {(customersData.length > 0 || counts) && (
               <div className="flex items-center gap-2">
                 <label className="text-sm text-gray-700">
@@ -552,7 +662,7 @@ export default function App() {
             )}
 
             {result && (
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <button
                   onClick={onDownloadCSV}
                   className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700"
@@ -561,12 +671,27 @@ export default function App() {
                   ⇩ Download CSV
                 </button>
                 <button
-                  onClick={() => window.print()}
+                  onClick={() => {
+                    setPrintAll(false);
+                    window.print();
+                  }}
                   className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-purple-600 text-white hover:bg-purple-700"
-                  title="Print packing plan"
+                  title="Print valgt kunde"
                 >
-                  🖨️ Print
+                  🖨️ Print valgt kunde
                 </button>
+                {customersData.length > 1 && (
+                  <button
+                    onClick={() => {
+                      setPrintAll(true);
+                      window.print();
+                    }}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700"
+                    title="Print alle kunder"
+                  >
+                    🖨️ Print alle kunder
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -586,11 +711,15 @@ export default function App() {
                 <div className="rounded-xl border p-3 bg-gray-50">
                   {prettyCounts(counts)}
                 </div>
-                {customer && (
-                  <div className="text-sm text-gray-600">
-                    Customer: <b>{customer}</b>
-                  </div>
-                )}
+                <div className="text-sm text-gray-600 text-right">
+                  {customer && (
+                    <>
+                      Customer: <b>{customer}</b>
+                      <br />
+                    </>
+                  )}
+                  Date: {effectiveDate}
+                </div>
               </div>
             </div>
           )}
@@ -623,7 +752,9 @@ export default function App() {
                   <div className="text-sm text-gray-500">
                     Date
                   </div>
-                  <div className="mt-1 text-base">{today}</div>
+                  <div className="mt-1 text-base">
+                    {effectiveDate}
+                  </div>
                 </div>
               </div>
 
@@ -683,6 +814,32 @@ export default function App() {
             </div>
           )}
         </div>
+
+        {/* Print-layout (kun ved print) */}
+        {(customersData.length > 0 || result) && (
+          <div className="hidden print:block">
+            {printAll && customersData.length > 0
+              ? customersData.map((c, idx) => (
+                  <CustomerPrintSection
+                    key={c.customerId}
+                    customerName={c.customerName}
+                    date={c.deliveryDate || today}
+                    counts={c.counts}
+                    result={c.result}
+                    isLast={idx === customersData.length - 1}
+                  />
+                ))
+              : (
+                <CustomerPrintSection
+                  customerName={customer}
+                  date={effectiveDate}
+                  counts={counts}
+                  result={result}
+                  isLast={true}
+                />
+              )}
+          </div>
+        )}
       </div>
     </div>
   );
