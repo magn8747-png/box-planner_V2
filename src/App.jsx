@@ -146,6 +146,11 @@ function solveOptimal(counts) {
   };
 }
 
+// =============================================
+// Parsers
+// =============================================
+
+// Gammel parser – bruges som fallback, hvis ikke der er kundenavne mv.
 function parseCountsFromSheet(sheet) {
   const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
   const wanted = rows.filter((r) => String(r.Enhed || "").toLowerCase().trim() === "kolli");
@@ -163,8 +168,52 @@ function parseCountsFromSheet(sheet) {
   return counts;
 }
 
+// NY: Parser til ordreliste med flere kunder
+// Forventer kolonner: "Kundenavn", "Ordrelinje produktnavn", "Ordrelinje antal"
+function parseCustomersFromSheet(sheet) {
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+  const sizeFromName = (name) => {
+    const m = String(name || "").match(/(60|250|340|750|5000)\s*ml/i);
+    return m ? m[1] : null;
+  };
+
+  const byCustomer = new Map();
+
+  for (const r of rows) {
+    const customerName = String(r["Kundenavn"] || "").trim();
+    const productName = String(r["Ordrelinje produktnavn"] || "");
+    const qtyRaw = r["Ordrelinje antal"];
+
+    if (!customerName) continue;
+
+    const ml = sizeFromName(productName);
+    if (!ml) continue;
+
+    const qty = Number(qtyRaw || 0);
+    if (!isFinite(qty) || qty <= 0) continue;
+
+    if (!byCustomer.has(customerName)) {
+      byCustomer.set(customerName, {
+        customerId: customerName,   // kan udvides til rigtig ID senere
+        customerName,
+        counts: { "60": 0, "250": 0, "340": 0, "750": 0, "5000": 0 },
+      });
+    }
+
+    const entry = byCustomer.get(customerName);
+    entry.counts[ml] = (entry.counts[ml] || 0) + qty;
+  }
+
+  return Array.from(byCustomer.values());
+}
+
+// =============================================
+
 function prettyCounts(counts) {
-  return `60ml ${counts["60"] || 0}, 250ml ${counts["250"] || 0}, 340ml ${counts["340"] || 0}, 750ml ${counts["750"] || 0}, 5000ml ${counts["5000"] || 0}`;
+  return `60ml ${counts["60"] || 0}, 250ml ${counts["250"] || 0}, 340ml ${counts["340"] || 0}, 750ml ${
+    counts["750"] || 0
+  }, 5000ml ${counts["5000"] || 0}`;
 }
 
 function runSelfTests() {
@@ -181,9 +230,9 @@ function runSelfTests() {
   let passed = 0;
   for (const t of tests) {
     const out = solveOptimal(t.counts);
-    const names = out.boxes.map(b => b.name).join(" | ");
+    const names = out.boxes.map((b) => b.name).join(" | ");
     const okBoxes = typeof t.expectBoxes === "number" ? out.summary.boxes === t.expectBoxes : true;
-    const okContains = (t.contains || []).every(s => names.includes(s));
+    const okContains = (t.contains || []).every((s) => names.includes(s));
     const ok = okBoxes && okContains;
     if (ok) passed++;
     console.log(`${ok ? "✔" : "✘"} ${t.name} → boxes=${out.summary.boxes}; combos=[${names}]`);
@@ -192,7 +241,7 @@ function runSelfTests() {
 }
 
 // =============================================
-// React component with Customer Name feature
+// React component with multi-customer support
 // =============================================
 export default function App() {
   const [file, setFile] = useState(null);
@@ -201,9 +250,25 @@ export default function App() {
   const [error, setError] = useState("");
   const [customer, setCustomer] = useState("");
 
+  // NEW: flere kunder i én fil
+  const [customersData, setCustomersData] = useState([]);       // [{ customerId, customerName, counts, result }]
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
+
   useEffect(() => {
-    try { if (import.meta?.env?.DEV) runSelfTests(); } catch {}
+    try {
+      if (import.meta?.env?.DEV) runSelfTests();
+    } catch {}
   }, []);
+
+  // Når der vælges kunde i dropdown
+  function handleSelectCustomer(id) {
+    setSelectedCustomerId(id);
+    const entry = customersData.find((c) => c.customerId === id);
+    if (!entry) return;
+    setCounts(entry.counts);
+    setResult(entry.result);
+    setCustomer(entry.customerName || entry.customerId);
+  }
 
   async function handleFile(e) {
     const f = e.target.files?.[0];
@@ -211,21 +276,55 @@ export default function App() {
     setError("");
     setCounts(null);
     setResult(null);
+    setCustomer("");
+    setCustomersData([]);
+    setSelectedCustomerId("");
+
     if (!f) return;
 
     try {
       const data = await f.arrayBuffer();
       const wb = XLSX.read(data, { cellStyles: false, cellHTML: false, WTF: false });
-      const sheetName = wb.SheetNames[0];
-      const sheet = wb.Sheets[sheetName];
 
-      const c = parseCountsFromSheet(sheet);
-      setCounts(c);
-      const res = solveOptimal(c);
-      setResult(res);
+      const preferredSheetName = wb.SheetNames.includes("Ordreliste")
+        ? "Ordreliste"
+        : wb.SheetNames[0];
+      const sheet = wb.Sheets[preferredSheetName];
+
+      // Prøv først at parse som dags-ordreliste med flere kunder
+      const customers = parseCustomersFromSheet(sheet);
+
+      if (customers.length === 0) {
+        // Fallback: gammel logik (enkelt ordre-ark med Enhed/Navn/Antal)
+        const c = parseCountsFromSheet(sheet);
+        setCounts(c);
+        const res = solveOptimal(c);
+        setResult(res);
+        return;
+      }
+
+      // Beregn for hver kunde
+      const withResults = customers.map((c) => ({
+        ...c,
+        result: solveOptimal(c.counts),
+      }));
+
+      setCustomersData(withResults);
+
+      if (withResults.length === 1) {
+        // Kun én kunde i filen → opfør dig som før
+        const only = withResults[0];
+        setSelectedCustomerId(only.customerId);
+        setCounts(only.counts);
+        setResult(only.result);
+        setCustomer(only.customerName);
+      }
+      // Hvis der er flere kunder, skal brugeren vælge i dropdown
     } catch (err) {
       console.error(err);
-      setError("Could not read the spreadsheet. Ensure columns 'Enhed', 'Navn', and 'Antal' exist.");
+      setError(
+        "Kunne ikke læse regnearket. Tjek at fanen 'Ordreliste' og kolonnerne 'Kundenavn', 'Ordrelinje produktnavn' og 'Ordrelinje antal' findes, eller brug det gamle format med 'Enhed', 'Navn' og 'Antal'."
+      );
     }
   }
 
@@ -235,6 +334,8 @@ export default function App() {
     setResult(null);
     setError("");
     setCustomer("");
+    setCustomersData([]);
+    setSelectedCustomerId("");
   }
 
   function onDownloadCSV() {
@@ -254,9 +355,9 @@ export default function App() {
     const csv = rows.map((r) => r.map((cell) => String(cell).replace(/;/g, ",")).join(";")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
+    const safeName = (customer || "packing-plan").replace(/[^a-z0-9_-]/gi, "-");
     const a = document.createElement("a");
     a.href = url;
-    const safeName = (customer || "packing-plan").replace(/[^a-z0-9_-]/gi, "-");
     a.download = `${safeName}.csv`;
     a.click();
     URL.revokeObjectURL(url);
@@ -273,7 +374,11 @@ export default function App() {
             <h1 className="text-2xl font-bold">Box Planner</h1>
             {/* Print header line with customer + date */}
             <div className="text-sm text-gray-600 hidden print:block">
-              {customer ? <>Customer: <b>{customer}</b> · </> : null}
+              {customer ? (
+                <>
+                  Customer: <b>{customer}</b> ·{" "}
+                </>
+              ) : null}
               Date: {today}
             </div>
           </div>
@@ -294,16 +399,34 @@ export default function App() {
               </button>
             )}
 
-            {/* Customer field appears after upload */}
+            {/* Customer selection / input */}
             {counts && (
               <div className="flex items-center gap-2">
                 <label className="text-sm text-gray-700">Customer</label>
-                <input
-                  value={customer}
-                  onChange={(e) => setCustomer(e.target.value)}
-                  placeholder="Type customer name"
-                  className="px-3 py-2 rounded-xl border focus:outline-none focus:ring w-56"
-                />
+
+                {customersData.length > 1 ? (
+                  <select
+                    value={selectedCustomerId || ""}
+                    onChange={(e) => handleSelectCustomer(e.target.value)}
+                    className="px-3 py-2 rounded-xl border focus:outline-none focus:ring w-72"
+                  >
+                    <option value="" disabled>
+                      Vælg kunde…
+                    </option>
+                    {customersData.map((c) => (
+                      <option key={c.customerId} value={c.customerId}>
+                        {c.customerName}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value={customer}
+                    onChange={(e) => setCustomer(e.target.value)}
+                    placeholder="Type customer name"
+                    className="px-3 py-2 rounded-xl border focus:outline-none focus:ring w-56"
+                  />
+                )}
               </div>
             )}
 
@@ -327,9 +450,7 @@ export default function App() {
             )}
           </div>
 
-          {error && (
-            <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-xl">{error}</div>
-          )}
+          {error && <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-xl">{error}</div>}
 
           {counts && (
             <div className="mt-6">
@@ -338,7 +459,11 @@ export default function App() {
               </h2>
               <div className="flex items-center justify-between">
                 <div className="rounded-xl border p-3 bg-gray-50">{prettyCounts(counts)}</div>
-                {customer && <div className="text-sm text-gray-600">Customer: <b>{customer}</b></div>}
+                {customer && (
+                  <div className="text-sm text-gray-600">
+                    Customer: <b>{customer}</b>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -353,7 +478,9 @@ export default function App() {
                 </div>
                 <div className="rounded-2xl border p-4 bg-gradient-to-b from-white to-gray-50">
                   <div className="text-sm text-gray-500">Customer</div>
-                  <div className="mt-1 text-base">{customer || <span className="text-gray-400">—</span>}</div>
+                  <div className="mt-1 text-base">
+                    {customer || <span className="text-gray-400">—</span>}
+                  </div>
                 </div>
                 <div className="rounded-2xl border p-4 bg-gradient-to-b from-white to-gray-50">
                   <div className="text-sm text-gray-500">Date</div>
@@ -388,7 +515,9 @@ export default function App() {
                     ))}
                     {result.boxes.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="p-4 text-center text-gray-500">No boxes – nothing to pack</td>
+                        <td colSpan={7} className="p-4 text-center text-gray-500">
+                          No boxes – nothing to pack
+                        </td>
                       </tr>
                     )}
                   </tbody>
