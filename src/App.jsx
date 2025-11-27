@@ -5,7 +5,15 @@ import * as XLSX from "xlsx";
 // =============================================
 // Packing logic & helpers  (includes 5000 ml BIB rules)
 // =============================================
-function combo(name, c60 = 0, c250 = 0, c340 = 0, c750 = 0, c5000 = 0, onlyIfPure750 = false) {
+function combo(
+  name,
+  c60 = 0,
+  c250 = 0,
+  c340 = 0,
+  c750 = 0,
+  c5000 = 0,
+  onlyIfPure750 = false
+) {
   return { name, c60, c250, c340, c750, c5000, onlyIfPure750 };
 }
 
@@ -45,9 +53,7 @@ function generateAllCombos(pure750) {
   }
   for (let a250 = 0; a250 <= 5; a250++) {
     const a340 = 5 - a250;
-    combos.push(
-      combo(`1×750 + (${a250}×250,${a340}×340)`, 0, a250, a340, 1, 0)
-    );
+    combos.push(combo(`1×750 + (${a250}×250,${a340}×340)`, 0, a250, a340, 1, 0));
   }
   combos.push(combo("1×750 + 8×60", 8, 0, 0, 1, 0));
   combos.push(combo("1×250 + 8×60", 8, 1, 0, 0, 0));
@@ -56,8 +62,7 @@ function generateAllCombos(pure750) {
   const map = new Map();
   for (const cb of combos) {
     const key = `${cb.c60},${cb.c250},${cb.c340},${cb.c750},${cb.c5000},${cb.onlyIfPure750}`;
-    if (!map.has(key) || cb.name.length < map.get(key).name.length)
-      map.set(key, cb);
+    if (!map.has(key) || cb.name.length < map.get(key).name.length) map.set(key, cb);
   }
   return Array.from(map.values());
 }
@@ -155,14 +160,10 @@ function solveOptimal(counts) {
     while (x > 0) {
       const take = Math.min(cap, x);
       if (label === "60") pushBox(`Partial box: ${take}×60`, take, 0, 0, 0, 0);
-      if (label === "250")
-        pushBox(`Partial box: ${take}×250`, 0, take, 0, 0, 0);
-      if (label === "340")
-        pushBox(`Partial box: ${take}×340`, 0, 0, take, 0, 0);
-      if (label === "750")
-        pushBox(`Partial box: ${take}×750`, 0, 0, 0, take, 0);
-      if (label === "5000")
-        pushBox(`Partial box: ${take}×5000`, 0, 0, 0, 0, take);
+      if (label === "250") pushBox(`Partial box: ${take}×250`, 0, take, 0, 0, 0);
+      if (label === "340") pushBox(`Partial box: ${take}×340`, 0, 0, take, 0, 0);
+      if (label === "750") pushBox(`Partial box: ${take}×750`, 0, 0, 0, take, 0);
+      if (label === "5000") pushBox(`Partial box: ${take}×5000`, 0, 0, 0, 0, take);
       x -= take;
     }
   };
@@ -189,7 +190,7 @@ function solveOptimal(counts) {
 // Parsers
 // =============================================
 
-// Gammel parser – fallback hvis der ikke er Kundenavn/Ordrelinje-kolonner
+// Fallback-parser til gammelt format med Enhed/Navn/Antal
 function parseCountsFromSheet(sheet) {
   const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
   const wanted = rows.filter(
@@ -204,14 +205,12 @@ function parseCountsFromSheet(sheet) {
     const ml = sizeFromName(r.Navn);
     if (!ml) continue;
     const antal = Number(r.Antal || 0);
-    counts[ml] =
-      (counts[ml] || 0) + (isFinite(antal) ? antal : 0);
+    counts[ml] = (counts[ml] || 0) + (isFinite(antal) ? antal : 0);
   }
   return counts;
 }
 
 // NY: Parser til ordreliste med flere kunder
-// Vi læser direkte pr. kolonne-position:
 //  - A (index 0): Leveringsdato
 //  - B (index 1): Kundenavn
 //  - C (index 2): Ordrelinje produktnavn
@@ -234,7 +233,11 @@ function parseCustomersFromSheet(sheet) {
     let dateStr = "";
     if (rawDate instanceof Date) {
       dateStr = rawDate.toLocaleDateString("da-DK");
-    } else if (typeof rawDate === "number" && XLSX.SSF && XLSX.SSF.parse_date_code) {
+    } else if (
+      typeof rawDate === "number" &&
+      XLSX.SSF &&
+      typeof XLSX.SSF.parse_date_code === "function"
+    ) {
       try {
         const dc = XLSX.SSF.parse_date_code(rawDate);
         if (dc) {
@@ -249,8 +252,8 @@ function parseCustomersFromSheet(sheet) {
     }
 
     const customerName = String(row[1] || "").trim(); // kolonne B
-    const productName = String(row[2] || "");          // kolonne C
-    const qtyRaw = row[4];                             // kolonne E
+    const productName = String(row[2] || ""); // kolonne C
+    const qtyRaw = row[4]; // kolonne E
 
     if (!customerName) continue;
 
@@ -350,9 +353,7 @@ function runSelfTests() {
     const ok = okBoxes && okContains;
     if (ok) passed++;
     console.log(
-      `${ok ? "✔" : "✘"} ${t.name} → boxes=${
-        out.summary.boxes
-      }; combos=[${names}]`
+      `${ok ? "✔" : "✘"} ${t.name} → boxes=${out.summary.boxes}; combos=[${names}]`
     );
   }
   console.log(`Self-tests: ${passed}/${tests.length} passed`);
@@ -365,10 +366,22 @@ function CustomerPrintSection({ customerName, date, counts, result, isLast }) {
   if (!result || !counts) return null;
   return (
     <div style={{ pageBreakAfter: isLast ? "auto" : "always" }}>
-      <h2 style={{ fontSize: "18px", fontWeight: "bold", marginBottom: "4px" }}>
+      <h2
+        style={{
+          fontSize: "18px",
+          fontWeight: "bold",
+          marginBottom: "4px",
+        }}
+      >
         Box Planner – {customerName || "Ukendt kunde"}
       </h2>
-      <div style={{ marginBottom: "8px", fontSize: "12px", color: "#555" }}>
+      <div
+        style={{
+          marginBottom: "8px",
+          fontSize: "12px",
+          color: "#555",
+        }}
+      >
         Date: {date || "-"}
       </div>
       <div
@@ -404,25 +417,61 @@ function CustomerPrintSection({ customerName, date, counts, result, isLast }) {
         <tbody>
           {result.boxes.map((b, i) => (
             <tr key={i}>
-              <td style={{ border: "1px solid #ddd", padding: "4px", textAlign: "center" }}>
+              <td
+                style={{
+                  border: "1px solid #ddd",
+                  padding: "4px",
+                  textAlign: "center",
+                }}
+              >
                 {i + 1}
               </td>
               <td style={{ border: "1px solid #ddd", padding: "4px" }}>
                 {b.name}
               </td>
-              <td style={{ border: "1px solid #ddd", padding: "4px", textAlign: "center" }}>
+              <td
+                style={{
+                  border: "1px solid #ddd",
+                  padding: "4px",
+                  textAlign: "center",
+                }}
+              >
                 {b.c60 ?? 0}
               </td>
-              <td style={{ border: "1px solid #ddd", padding: "4px", textAlign: "center" }}>
+              <td
+                style={{
+                  border: "1px solid #ddd",
+                  padding: "4px",
+                  textAlign: "center",
+                }}
+              >
                 {b.c250 ?? 0}
               </td>
-              <td style={{ border: "1px solid #ddd", padding: "4px", textAlign: "center" }}>
+              <td
+                style={{
+                  border: "1px solid #ddd",
+                  padding: "4px",
+                  textAlign: "center",
+                }}
+              >
                 {b.c340 ?? 0}
               </td>
-              <td style={{ border: "1px solid #ddd", padding: "4px", textAlign: "center" }}>
+              <td
+                style={{
+                  border: "1px solid #ddd",
+                  padding: "4px",
+                  textAlign: "center",
+                }}
+              >
                 {b.c750 ?? 0}
               </td>
-              <td style={{ border: "1px solid #ddd", padding: "4px", textAlign: "center" }}>
+              <td
+                style={{
+                  border: "1px solid #ddd",
+                  padding: "4px",
+                  textAlign: "center",
+                }}
+              >
                 {b.c5000 ?? 0}
               </td>
             </tr>
@@ -431,7 +480,12 @@ function CustomerPrintSection({ customerName, date, counts, result, isLast }) {
             <tr>
               <td
                 colSpan={7}
-                style={{ border: "1px solid #ddd", padding: "4px", textAlign: "center", color: "#777" }}
+                style={{
+                  border: "1px solid #ddd",
+                  padding: "4px",
+                  textAlign: "center",
+                  color: "#777",
+                }}
               >
                 No boxes – nothing to pack
               </td>
@@ -594,6 +648,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-50 p-6 print:bg-white">
       <div className="max-w-5xl mx-auto">
+        {/* Header kun på skærm */}
         <header className="flex items-center gap-3 mb-6 print:mb-2 print:hidden">
           <Package className="w-8 h-8" />
           <div className="flex flex-col">
@@ -624,26 +679,19 @@ export default function App() {
 
             {(customersData.length > 0 || counts) && (
               <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-700">
-                  Customer
-                </label>
+                <label className="text-sm text-gray-700">Customer</label>
 
                 {customersData.length > 1 ? (
                   <select
                     value={selectedCustomerId || ""}
-                    onChange={(e) =>
-                      handleSelectCustomer(e.target.value)
-                    }
+                    onChange={(e) => handleSelectCustomer(e.target.value)}
                     className="px-3 py-2 rounded-xl border focus:outline-none focus:ring w-72"
                   >
                     <option value="" disabled>
                       Vælg kunde…
                     </option>
                     {customersData.map((c) => (
-                      <option
-                        key={c.customerId}
-                        value={c.customerId}
-                      >
+                      <option key={c.customerId} value={c.customerId}>
                         {c.customerName}
                       </option>
                     ))}
@@ -651,9 +699,7 @@ export default function App() {
                 ) : (
                   <input
                     value={customer}
-                    onChange={(e) =>
-                      setCustomer(e.target.value)
-                    }
+                    onChange={(e) => setCustomer(e.target.value)}
                     placeholder="Type customer name"
                     className="px-3 py-2 rounded-xl border focus:outline-none focus:ring w-56"
                   />
@@ -672,26 +718,14 @@ export default function App() {
                 </button>
                 <button
                   onClick={() => {
-                    setPrintAll(false);
-                    window.print();
+                    setPrintAll(true);
+                    setTimeout(() => window.print(), 0);
                   }}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-purple-600 text-white hover:bg-purple-700"
-                  title="Print valgt kunde"
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700"
+                  title="Print alle kunder"
                 >
-                  🖨️ Print valgt kunde
+                  🖨️ Print alle kunder
                 </button>
-                {customersData.length > 1 && (
-                  <button
-                    onClick={() => {
-                      setPrintAll(true);
-                      window.print();
-                    }}
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700"
-                    title="Print alle kunder"
-                  >
-                    🖨️ Print alle kunder
-                  </button>
-                )}
               </div>
             )}
           </div>
@@ -726,35 +760,23 @@ export default function App() {
 
           {result && (
             <div className="mt-8">
-              <h3 className="text-lg font-semibold mb-2">
-                Result
-              </h3>
+              <h3 className="text-lg font-semibold mb-2">Result</h3>
               <div className="grid sm:grid-cols-3 gap-4">
                 <div className="rounded-2xl border p-4 bg-gradient-to-b from-white to-gray-50">
-                  <div className="text-sm text-gray-500">
-                    Total boxes
-                  </div>
+                  <div className="text-sm text-gray-500">Total boxes</div>
                   <div className="text-3xl font-bold">
                     {result.summary.boxes}
                   </div>
                 </div>
                 <div className="rounded-2xl border p-4 bg-gradient-to-b from-white to-gray-50">
-                  <div className="text-sm text-gray-500">
-                    Customer
-                  </div>
+                  <div className="text-sm text-gray-500">Customer</div>
                   <div className="mt-1 text-base">
-                    {customer || (
-                      <span className="text-gray-400">—</span>
-                    )}
+                    {customer || <span className="text-gray-400">—</span>}
                   </div>
                 </div>
                 <div className="rounded-2xl border p-4 bg-gradient-to-b from-white to-gray-50">
-                  <div className="text-sm text-gray-500">
-                    Date
-                  </div>
-                  <div className="mt-1 text-base">
-                    {effectiveDate}
-                  </div>
+                  <div className="text-sm text-gray-500">Date</div>
+                  <div className="mt-1 text-base">{effectiveDate}</div>
                 </div>
               </div>
 
@@ -773,29 +795,14 @@ export default function App() {
                   </thead>
                   <tbody>
                     {result.boxes.map((b, i) => (
-                      <tr
-                        key={i}
-                        className="odd:bg-white even:bg-gray-50"
-                      >
-                        <td className="border p-2 text-center">
-                          {i + 1}
-                        </td>
+                      <tr key={i} className="odd:bg-white even:bg-gray-50">
+                        <td className="border p-2 text-center">{i + 1}</td>
                         <td className="border p-2">{b.name}</td>
-                        <td className="border p-2 text-center">
-                          {b.c60 ?? 0}
-                        </td>
-                        <td className="border p-2 text-center">
-                          {b.c250 ?? 0}
-                        </td>
-                        <td className="border p-2 text-center">
-                          {b.c340 ?? 0}
-                        </td>
-                        <td className="border p-2 text-center">
-                          {b.c750 ?? 0}
-                        </td>
-                        <td className="border p-2 text-center">
-                          {b.c5000 ?? 0}
-                        </td>
+                        <td className="border p-2 text-center">{b.c60 ?? 0}</td>
+                        <td className="border p-2 text-center">{b.c250 ?? 0}</td>
+                        <td className="border p-2 text-center">{b.c340 ?? 0}</td>
+                        <td className="border p-2 text-center">{b.c750 ?? 0}</td>
+                        <td className="border p-2 text-center">{b.c5000 ?? 0}</td>
                       </tr>
                     ))}
                     {result.boxes.length === 0 && (
@@ -816,9 +823,9 @@ export default function App() {
         </div>
 
         {/* Print-layout (kun ved print) */}
-        {(customersData.length > 0 || result) && (
+        {printAll && (
           <div className="hidden print:block">
-            {printAll && customersData.length > 0
+            {customersData.length > 0
               ? customersData.map((c, idx) => (
                   <CustomerPrintSection
                     key={c.customerId}
