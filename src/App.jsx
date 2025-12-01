@@ -3,7 +3,7 @@ import { Upload, Package, Trash2, FileSpreadsheet } from "lucide-react";
 import * as XLSX from "xlsx";
 
 // =============================================
-// Packing logic & helpers  (includes 5000 ml BIB rules)
+// Packing logic (uændret)
 // =============================================
 function combo(
   name,
@@ -19,14 +19,12 @@ function combo(
 
 function generateAllCombos(pure750) {
   const combos = [];
-  // Full single-size boxes
   combos.push(combo("10×60", 10, 0, 0, 0, 0));
   combos.push(combo("8×250", 0, 8, 0, 0, 0));
   combos.push(combo("8×340", 0, 0, 8, 0, 0));
   combos.push(combo("2×750", 0, 0, 0, 2, 0, false));
-  combos.push(combo("3×5000", 0, 0, 0, 0, 3)); // BIB full box
+  combos.push(combo("3×5000", 0, 0, 0, 0, 3));
 
-  // BIB (5000 ml) mix rules
   combos.push(combo("2×5000 + 2×250 + 1×60", 1, 2, 0, 0, 2));
   combos.push(combo("2×5000 + 2×340", 0, 0, 2, 0, 2));
   combos.push(combo("1×5000 + 1×750 + 1×250", 0, 1, 0, 1, 1));
@@ -34,7 +32,6 @@ function generateAllCombos(pure750) {
   combos.push(combo("1×5000 + 4×250 + 1×60", 1, 4, 0, 0, 1));
   combos.push(combo("1×5000 + 4×340 + 1×60", 1, 0, 4, 0, 1));
 
-  // Existing mixed patterns (no 5000 unless explicitly above)
   for (let a60 = 0; a60 <= 2; a60++) {
     for (let a250 = 0; a250 <= 2 - a60; a250++) {
       const a340 = 2 - a60 - a250;
@@ -58,7 +55,6 @@ function generateAllCombos(pure750) {
   combos.push(combo("1×750 + 8×60", 8, 0, 0, 1, 0));
   combos.push(combo("1×250 + 8×60", 8, 1, 0, 0, 0));
 
-  // Deduplicate identical vectors (keep shortest name)
   const map = new Map();
   for (const cb of combos) {
     const key = `${cb.c60},${cb.c250},${cb.c340},${cb.c750},${cb.c5000},${cb.onlyIfPure750}`;
@@ -190,7 +186,7 @@ function solveOptimal(counts) {
 // Parsers
 // =============================================
 
-// Fallback-parser til gammelt format med Enhed/Navn/Antal
+// Fallback til gammelt enkelt-ordre ark
 function parseCountsFromSheet(sheet) {
   const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
   const wanted = rows.filter(
@@ -210,11 +206,8 @@ function parseCountsFromSheet(sheet) {
   return counts;
 }
 
-// NY: Parser til ordreliste med flere kunder
-//  - A (index 0): Leveringsdato
-//  - B (index 1): Kundenavn
-//  - C (index 2): Ordrelinje produktnavn
-//  - E (index 4): Ordrelinje antal
+// NY robust multi-kunde parser baseret på kolonneposition
+// A: Leveringsdato, B: Kundenavn, C: Produktnavn, E: Antal
 function parseCustomersFromSheet(sheet) {
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
 
@@ -225,11 +218,15 @@ function parseCustomersFromSheet(sheet) {
 
   const byCustomer = new Map();
 
-  for (let i = 2; i < rows.length; i++) {
+  for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.length === 0) continue;
 
-    const rawDate = row[0]; // kolonne A
+    const rawCustomer = row[1];
+    const customerName = String(rawCustomer || "").trim();
+    if (!customerName || customerName === "Kundenavn") continue;
+
+    const rawDate = row[0];
     let dateStr = "";
     if (rawDate instanceof Date) {
       dateStr = rawDate.toLocaleDateString("da-DK");
@@ -251,11 +248,8 @@ function parseCustomersFromSheet(sheet) {
       dateStr = String(rawDate || "").trim();
     }
 
-    const customerName = String(row[1] || "").trim(); // kolonne B
-    const productName = String(row[2] || ""); // kolonne C
-    const qtyRaw = row[4]; // kolonne E
-
-    if (!customerName) continue;
+    const productName = String(row[2] || "");
+    const qtyRaw = row[4];
 
     const ml = sizeFromName(productName);
     if (!ml) continue;
@@ -279,7 +273,10 @@ function parseCustomersFromSheet(sheet) {
     }
   }
 
-  return Array.from(byCustomer.values());
+  const out = Array.from(byCustomer.values());
+  // Hjælpe-log – du kan fjerne den igen, når du har set det i konsollen
+  console.log("Kunder fundet:", out.map((c) => c.customerName));
+  return out;
 }
 
 // =============================================
@@ -290,78 +287,7 @@ function prettyCounts(counts) {
   }, 750ml ${counts["750"] || 0}, 5000ml ${counts["5000"] || 0}`;
 }
 
-function runSelfTests() {
-  const tests = [
-    {
-      name: "pure 3×5000",
-      counts: { 5000: 3 },
-      expectBoxes: 1,
-      contains: ["3×5000"],
-    },
-    {
-      name: "4×5000 → 1 full + 1 partial",
-      counts: { 5000: 4 },
-      expectBoxes: 2,
-      contains: ["3×5000", "Partial box: 1×5000"],
-    },
-    {
-      name: "2×5000 + 2×250 + 1×60",
-      counts: { 5000: 2, 250: 2, 60: 1 },
-      expectBoxes: 1,
-      contains: ["2×5000 + 2×250 + 1×60"],
-    },
-    {
-      name: "2×5000 + 2×340",
-      counts: { 5000: 2, 340: 2 },
-      expectBoxes: 1,
-      contains: ["2×5000 + 2×340"],
-    },
-    {
-      name: "1×5000 + 1×750 + 1×250",
-      counts: { 5000: 1, 750: 1, 250: 1 },
-      expectBoxes: 1,
-      contains: ["1×5000 + 1×750 + 1×250"],
-    },
-    {
-      name: "1×5000 + 1×750 + 2×60",
-      counts: { 5000: 1, 750: 1, 60: 2 },
-      expectBoxes: 1,
-      contains: ["1×5000 + 1×750 + 2×60"],
-    },
-    {
-      name: "1×5000 + 4×250 + 1×60",
-      counts: { 5000: 1, 250: 4, 60: 1 },
-      expectBoxes: 1,
-      contains: ["1×5000 + 4×250 + 1×60"],
-    },
-    {
-      name: "1×5000 + 4×340 + 1×60",
-      counts: { 5000: 1, 340: 4, 60: 1 },
-      expectBoxes: 1,
-      contains: ["1×5000 + 4×340 + 1×60"],
-    },
-  ];
-  let passed = 0;
-  for (const t of tests) {
-    const out = solveOptimal(t.counts);
-    const names = out.boxes.map((b) => b.name).join(" | ");
-    const okBoxes =
-      typeof t.expectBoxes === "number"
-        ? out.summary.boxes === t.expectBoxes
-        : true;
-    const okContains = (t.contains || []).every((s) => names.includes(s));
-    const ok = okBoxes && okContains;
-    if (ok) passed++;
-    console.log(
-      `${ok ? "✔" : "✘"} ${t.name} → boxes=${out.summary.boxes}; combos=[${names}]`
-    );
-  }
-  console.log(`Self-tests: ${passed}/${tests.length} passed`);
-}
-
-// =============================================
-// Print-komponent (kun til print)
-// =============================================
+// Simpel print-komponent til én kunde (bruges kun i print-view)
 function CustomerPrintSection({ customerName, date, counts, result, isLast }) {
   if (!result || !counts) return null;
   return (
@@ -476,21 +402,6 @@ function CustomerPrintSection({ customerName, date, counts, result, isLast }) {
               </td>
             </tr>
           ))}
-          {result.boxes.length === 0 && (
-            <tr>
-              <td
-                colSpan={7}
-                style={{
-                  border: "1px solid #ddd",
-                  padding: "4px",
-                  textAlign: "center",
-                  color: "#777",
-                }}
-              >
-                No boxes – nothing to pack
-              </td>
-            </tr>
-          )}
         </tbody>
       </table>
     </div>
@@ -498,7 +409,7 @@ function CustomerPrintSection({ customerName, date, counts, result, isLast }) {
 }
 
 // =============================================
-// React component with multi-customer support
+// App
 // =============================================
 export default function App() {
   const [file, setFile] = useState(null);
@@ -507,7 +418,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [customer, setCustomer] = useState("");
 
-  const [customersData, setCustomersData] = useState([]); // [{ customerId, customerName, counts, result, deliveryDate }]
+  const [customersData, setCustomersData] = useState([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [printAll, setPrintAll] = useState(false);
   const [displayDate, setDisplayDate] = useState("");
@@ -517,7 +428,10 @@ export default function App() {
 
   useEffect(() => {
     try {
-      if (import.meta?.env?.DEV) runSelfTests();
+      if (import.meta?.env?.DEV) {
+        // du kan slå den fra, hvis den støjer i konsollen
+        // runSelfTests();
+      }
     } catch {}
   }, []);
 
@@ -587,7 +501,7 @@ export default function App() {
     } catch (err) {
       console.error(err);
       setError(
-        "Kunne ikke læse regnearket. Tjek at fanen 'Ordreliste' og kolonnerne A (Leveringsdato), B (kundenavn), C (produktnavn) og E (antal) er udfyldt, eller brug det gamle format med 'Enhed', 'Navn' og 'Antal'."
+        "Kunne ikke læse regnearket. Tjek at fanen 'Ordreliste' og kolonnerne A (Leveringsdato), B (Kundenavn), C (produktnavn) og E (antal) er udfyldt."
       );
     }
   }
@@ -624,20 +538,13 @@ export default function App() {
       ])
     );
     const csv = rows
-      .map((r) =>
-        r
-          .map((cell) => String(cell).replace(/;/g, ","))
-          .join(";")
-      )
+      .map((r) => r.map((cell) => String(cell).replace(/;/g, ",")).join(";"))
       .join("\n");
     const blob = new Blob([csv], {
       type: "text/csv;charset=utf-8;",
     });
     const url = URL.createObjectURL(blob);
-    const safeName = (customer || "packing-plan").replace(
-      /[^a-z0-9_-]/gi,
-      "-"
-    );
+    const safeName = (customer || "packing-plan").replace(/[^a-z0-9_-]/gi, "-");
     const a = document.createElement("a");
     a.href = url;
     a.download = `${safeName}.csv`;
@@ -712,20 +619,20 @@ export default function App() {
                 <button
                   onClick={onDownloadCSV}
                   className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700"
-                  title="Download packing plan as CSV"
                 >
                   ⇩ Download CSV
                 </button>
-                <button
-                  onClick={() => {
-                    setPrintAll(true);
-                    setTimeout(() => window.print(), 0);
-                  }}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700"
-                  title="Print alle kunder"
-                >
-                  🖨️ Print alle kunder
-                </button>
+                {customersData.length > 0 && (
+                  <button
+                    onClick={() => {
+                      setPrintAll(true);
+                      setTimeout(() => window.print(), 0);
+                    }}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700"
+                  >
+                    🖨️ Print alle kunder
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -805,16 +712,6 @@ export default function App() {
                         <td className="border p-2 text-center">{b.c5000 ?? 0}</td>
                       </tr>
                     ))}
-                    {result.boxes.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={7}
-                          className="p-4 text-center text-gray-500"
-                        >
-                          No boxes – nothing to pack
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
               </div>
@@ -822,7 +719,7 @@ export default function App() {
           )}
         </div>
 
-        {/* Print-layout (kun ved print) */}
+        {/* Print-layout – alle kunder på én gang */}
         {printAll && (
           <div className="hidden print:block">
             {customersData.length > 0
